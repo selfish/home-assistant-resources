@@ -1,0 +1,202 @@
+mode: restart
+max_exceeded: silent
+
+blueprint:
+  domain: automation
+  name: Selfish's Motion Lights
+  description: Setup Motion Lighting with a Timer and On/Off Overrides
+  source_url: https://github.com/selfish/home-assistant-resources/blob/master/config/blueprints/selfish_motion_lights.yaml
+
+  input:
+    motion_on:
+      name: Motion Sensor - Turn on
+      description: The motion sensor that triggers lights on
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain: binary_sensor
+
+    motion_off:
+      name: Motion Sensor - Turn off
+      description: The motion sensor that triggers lights off
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+
+    lights:
+      name: Lights
+      description: Lights or light-groups to control
+      selector:
+        entity:
+          multiple: true
+          filter:
+            domain:
+              - light
+              - group
+
+    timer:
+      name: Timer
+      description: A timer entity for the delay before lights turn off (create it in Config > Helpers)
+      selector:
+        entity:
+          filter:
+            domain: timer
+
+    ttl:
+      name: TTL
+      description: Duration to wait after motion stops before lights go off.
+      default: 0:05:00
+      selector:
+        time:
+
+    on_transition_time:
+      name: ON Transition Time
+      description: Time for lights to fade in (in seconds, 0 for no fade).
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 10
+          unit_of_measurement: seconds
+
+    off_transition_time:
+      name: OFF Transition Time
+      description: Time for lights to fade out (in seconds, 0 for no fade).
+      default: 5
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: seconds
+
+    light_brightness:
+      name: Brightness when On
+      description: Brightness percentage for the lights when turned on
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          mode: slider
+          unit_of_measurement: "%"
+
+    keep_on_override:
+      name: Turn Off Override
+      description: Entity to override the automatic turn-off feature
+      selector:
+        entity:
+          filter:
+            domain:
+              - binary_sensor
+              - input_boolean
+
+    lights_on_condition:
+      name: Lights On Conditions
+      description: Conditions that must be met for the lights to turn on
+      selector:
+        condition:
+
+trigger:
+  - id: turn_on_triggers
+    platform: state
+    entity_id: !input motion_on
+    to: "on"
+
+  - id: turn_on_triggers
+    platform: state
+    entity_id: !input keep_on_override
+    to: "on"
+
+  - id: motion_off
+    platform: state
+    entity_id: !input motion_off
+    to: "off"
+
+  - id: timer_finished
+    platform: event
+    event_type: timer.finished
+    event_data:
+      entity_id: !input timer
+
+  - id: light_turned_off
+    platform: state
+    entity_id: !input lights
+    to: "off"
+
+  - id: override_off
+    platform: state
+    entity_id: !input keep_on_override
+    to: "off"
+action:
+  - choose:
+      - conditions: # turn_on_triggers → turn on lights & cancel timer
+          - condition: trigger
+            id: turn_on_triggers
+        sequence:
+          - if: # lights_on_condition is met → turn on lights
+              - condition: and
+                conditions: !input lights_on_condition
+            then:
+              - service: light.turn_on
+                data:
+                  brightness_pct: !input light_brightness
+                  transition: !input on_transition_time
+                target:
+                  entity_id: !input lights
+          - service: timer.cancel
+            target:
+              entity_id: !input timer
+      - conditions: # motion_off && lights are on && keep_on_override=off → start timer
+          - condition: trigger
+            id: motion_off
+          - condition: state
+            entity_id: !input lights
+            state: "on"
+          - condition: state
+            entity_id: !input keep_on_override
+            state: "off"
+        sequence:
+          - service: timer.start
+            target:
+              entity_id: !input timer
+            data:
+              duration: !input ttl
+      - conditions: # timer_finished && keep_on_override=off → turn off lights
+          - condition: trigger
+            id: timer_finished
+          - condition: state
+            entity_id: !input keep_on_override
+            state: "off"
+        sequence:
+          - service: light.turn_off
+            target:
+              entity_id: !input lights
+            data:
+              transition: !input off_transition_time
+      - conditions: # light_turned_off → stop timer & turn off off_override
+          - condition: trigger
+            id: light_turned_off
+        sequence:
+          - service: homeassistant.turn_off
+            target:
+              entity_id: !input keep_on_override
+          - service: timer.cancel
+            target:
+              entity_id: !input timer
+      - conditions: # override_off && lights are on && no motion → Start Timer
+          - condition: trigger
+            id: override_off
+          - condition: state
+            entity_id: !input lights
+            state: "on"
+          - condition: state
+            entity_id: !input motion_off
+            state: "off"
+        sequence:
+          - service: timer.start
+            target:
+              entity_id: !input timer
+            data:
+              duration: !input ttl

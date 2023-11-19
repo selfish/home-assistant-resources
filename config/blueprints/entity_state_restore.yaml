@@ -1,0 +1,36 @@
+mode: parallel
+max_exceeded: silent
+
+blueprint:
+  domain: automation
+  name: Multi-Entity State Restore
+  description: Restores the state of multiple entities when they become unavailable or unknown. Allows optional restoration of attributes.
+  source_url: https://github.com/selfish/home-assistant-resources/blob/master/config/blueprints/entity_state_restore.yaml
+
+  input:
+    sensor_entities:
+      name: Entities
+      description: The entities to monitor
+      selector:
+        target:
+          entity:
+    restore_attributes:
+      name: Restore Attributes
+      description: Choose whether to restore attributes as well.
+      selector:
+        boolean:
+      default: true
+
+trigger:
+  - platform: state
+    target: !input sensor_entities
+    to: ['unavailable', 'unknown']
+
+action:
+  - variables:
+      restore_attrs: !input restore_attributes
+  - service: python_script.set_sensor_state
+    data:
+      entity_id: "{{ trigger.entity_id }}"
+      state: "{{ trigger.from_state.state }}"
+      attributes: "{{ trigger.from_state.attributes if restore_attrs else omit }}"

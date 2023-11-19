@@ -1,0 +1,13 @@
+set_state:
+  name: Set State of Entity
+  description: Sets the state or other attributes for a specified entity. Any key added other than state and allow_create will be added as an attribute
+  fields:
+    entity_id:
+      description: The entity for which the state will be set.
+      example: "sensor.temperature_sensor"
+    state:
+      description: The state to set for the entity.
+      example: "on"
+    allow_create:
+      description: Allows creation of a new entity if it does not exist.
+      example: true

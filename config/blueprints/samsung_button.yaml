@@ -1,0 +1,61 @@
+mode: parallel
+max_exceeded: silent
+
+blueprint:
+  domain: automation
+  name: Samsung Button 3 Actions
+  description: >-
+    Configure a Samsung SmartThings button to trigger different actions based on
+    short press, long press, or double press. This blueprint supports the
+    SmartThings button using the ZHA integration with the Samjin manufacturer.
+  source_url: https://github.com/selfish/home-assistant-resources/blob/master/config/blueprints/samsung_button.yaml
+
+  input:
+    button_device:
+      name: Button Device
+      description: The Samsung SmartThings button to use
+      selector:
+        device:
+          filter:
+            integration: zha
+            manufacturer: Samjin
+            model: button
+
+    short_press_actions:
+      name: Short Press Actions
+      default: []
+      selector:
+        action:
+
+    long_press_actions:
+      name: Long Press Actions
+      default: []
+      selector:
+        action:
+
+    double_press_actions:
+      name: Double Press Actions
+      default: []
+      selector:
+        action:
+
+trigger:
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input "button_device"
+
+action:
+  - variables:
+      press_type: "{{ trigger.event.data.args.press_type }}"
+  - choose:
+      - conditions: "{{ press_type == 'single' }}"
+        sequence: !input "short_press_actions"
+      - conditions: "{{ press_type == 'double' }}"
+        sequence: !input "double_press_actions"
+      - conditions: "{{ press_type == 'hold' }}"
+        sequence: !input "long_press_actions"
+    default:
+      - service: notify.notify
+        data:
+          message: "Unknown press type detected: {{ press_type }}"
