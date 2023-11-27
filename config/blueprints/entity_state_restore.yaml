@@ -1,36 +1,53 @@
-mode: parallel
 max_exceeded: silent
+mode: queued
+max: 20
 
 blueprint:
   domain: automation
-  name: Multi-Entity State Restore
-  description: Restores the state of multiple entities when they become unavailable or unknown. Allows optional restoration of attributes.
+  name: Entity State Save and Restore
+  description: Restores the state of an entity when it becomes unavailable or unknown. Allows optional restoration of attributes.
   source_url: https://github.com/selfish/home-assistant-resources/blob/master/config/blueprints/entity_state_restore.yaml
 
+  # depends_on: 
+  #   - https://github.com/PiotrMachowski/Home-Assistant-custom-components-Saver
+  #   - https://github.com/selfish/home-assistant-resources/blob/master/config/python_scripts/set_state.py 
+
   input:
-    sensor_entities:
-      name: Entities
+    entity:
+      name: Entity
       description: The entities to monitor
       selector:
-        target:
-          entity:
-    restore_attributes:
-      name: Restore Attributes
-      description: Choose whether to restore attributes as well.
-      selector:
-        boolean:
-      default: true
+        entity:
+
+variables:
+  entity: !input entity
 
 trigger:
-  - platform: state
-    target: !input sensor_entities
-    to: ['unavailable', 'unknown']
+  - id: state_change
+    platform: state
+    entity_id: !input entity
+  - id: ha_restart
+    platform: homeassistant
+    event: start
+    
 
 action:
-  - variables:
-      restore_attrs: !input restore_attributes
-  - service: python_script.set_sensor_state
-    data:
-      entity_id: "{{ trigger.entity_id }}"
-      state: "{{ trigger.from_state.state }}"
-      attributes: "{{ trigger.from_state.attributes if restore_attrs else omit }}"
+  - if:
+      - condition: trigger
+        id: state_change
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: !input entity
+            state:
+              - "unavailable"
+              - "unknown"
+    then:
+      service: saver.save_state
+      data:
+        entity_id: !input entity
+    else:
+      - service: python_script.set_state
+        data:
+          entity_id: !input entity
+          state: "{{ saver_entity(entity) }}"
